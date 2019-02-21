@@ -1,0 +1,6 @@
+framework module Pods_Ipa_Install {
+  umbrella header "Pods-Ipa-Install-umbrella.h"
+
+  export *
+  module * { export * }
+}

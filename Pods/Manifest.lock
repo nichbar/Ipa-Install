@@ -1,0 +1,20 @@
+PODS:
+  - Swifter (1.4.5)
+  - Tiercel (2.0.0)
+
+DEPENDENCIES:
+  - Swifter (~> 1.4.5)
+  - Tiercel
+
+SPEC REPOS:
+  https://github.com/cocoapods/specs.git:
+    - Swifter
+    - Tiercel
+
+SPEC CHECKSUMS:
+  Swifter: eb2bc1d192a1c09169c7fefd01971565fa940521
+  Tiercel: a0910afa5e35c98129290d2fc8eb9aa69b0d6628
+
+PODFILE CHECKSUM: 2e52ddc4d4b8ae6d583a170dca2e3e99861aa707
+
+COCOAPODS: 1.6.0
