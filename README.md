@@ -12,7 +12,7 @@ It's nice. But when it comes to a large `.ipa` file and the user is using cellul
 
 ### How
 
-To bypass apple's limitation, we can download `.ipa` file on our own and create a http server to host the '.ipa' file for installation.
+To bypass apple's limitation, we can download `.ipa` file on our own and create a http server to host the `.ipa` file for installation.
 
 This demo use [Tiercel](https://github.com/Danie1s/Tiercel) to download file and [Swifter](https://github.com/httpswift/swifter) to start a http server.
 
