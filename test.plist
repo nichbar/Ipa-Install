@@ -28,14 +28,14 @@
 			</array>
 			<key>metadata</key>
 			<dict>
-				<key>bundle-identifier</key>
-				<string>com.uusafe.secmail</string>
-				<key>bundle-version</key>
-				<string>1.0.1</string>
-				<key>kind</key>
-				<string>software</string>
-				<key>title</key>
-				<string>Psyduck</string>
+			    <key>bundle-identifier</key>
+			    <string>com.uusafe.secmail</string>
+			    <key>bundle-version</key>
+			    <string>2.7.123</string>
+			    <key>kind</key>
+			    <string>software</string>
+			    <key>title</key>
+			    <string>安全邮件</string>
 			</dict>
 		</dict>
 	</array>
