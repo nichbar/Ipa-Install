@@ -16,6 +16,10 @@ To bypass apple's limitation, we can download `.ipa` file on our own and create 
 
 This demo use [Tiercel](https://github.com/Danie1s/Tiercel) to download file and [Swifter](https://github.com/httpswift/swifter) to start a http server.
 
+### About demo
+
+This demo contains no visible ui and it uses log output to show the changes.
+
 ### Ref
 
 - [DownloadAndInstallIpa](https://github.com/lovelyjune/DownloadAndInstallIpa)
