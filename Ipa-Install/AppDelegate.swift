@@ -59,7 +59,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 self.server.stop()
             })
             server.listenAddressIPv4 = "127.0.0.1"
-            server["/:path"] = shareFilesFromDirectory(TRManager.default.cache.downloadFilePath)
+            server["/:path"] = shareFilesFromDirectoryWithContentLength(TRManager.default.cache.downloadFilePath)
             try server.start(8090, forceIPv4: true)
             NSLog("Server started: Operating: \(server.operating)")
         } catch {

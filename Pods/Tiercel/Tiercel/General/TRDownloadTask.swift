@@ -27,7 +27,7 @@
 import UIKit
 
 public class TRDownloadTask: TRTask {
-
+    
     internal var task: URLSessionDownloadTask? {
         didSet {
             task?.addObserver(self, forKeyPath: "currentRequest", options: [.new], context: nil)
@@ -35,10 +35,13 @@ public class TRDownloadTask: TRTask {
     }
 
     public var filePath: String {
-        return cache.filePtah(fileName: fileName)!
+        return cache.filePath(fileName: fileName)!
     }
 
-    public var pathExtension: String?
+    public var pathExtension: String? {
+        let pathExtension = (filePath as NSString).pathExtension
+        return pathExtension.isEmpty ? nil : pathExtension
+    }
 
     internal var tmpFileURL: URL?
     
@@ -51,20 +54,18 @@ public class TRDownloadTask: TRTask {
         }
     }
     
-
-    public init(_ url: URL,
-                headers: [String: String]? = nil,
-                fileName: String? = nil,
-                cache: TRCache) {
+    internal var validateHandler: TRHandler<TRDownloadTask>?
+    
+    internal init(_ url: URL,
+                  headers: [String: String]? = nil,
+                  fileName: String? = nil,
+                  cache: TRCache) {
         super.init(url,
                    headers: headers,
                    cache: cache)
         if let fileName = fileName,
             !fileName.isEmpty {
             self.fileName = fileName
-        }
-        if !url.pathExtension.isEmpty {
-            pathExtension = url.pathExtension
         }
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(fixDelegateMethodError),
@@ -100,38 +101,21 @@ public class TRDownloadTask: TRTask {
     internal override func start() {
         cache.createDirectory()
         
-        task?.removeObserver(self, forKeyPath: "currentRequest")
-        if let resumeData = resumeData {
-            cache.retrievTmpFile(self)
-            if #available(iOS 10.2, *) {
-                task = session?.downloadTask(withResumeData: resumeData)
-            } else if #available(iOS 10.0, *) {
-                task = session?.correctedDownloadTask(withResumeData: resumeData)
-            } else {
-                task = session?.downloadTask(withResumeData: resumeData)
+        if cache.fileExists(fileName: fileName) {
+            TiercelLog("[downloadTask] 文件已经存在, manager.identifier: \(manager?.identifier ?? ""), URLString: \(URLString)")
+
+            if let fileInfo = try? FileManager().attributesOfItem(atPath: cache.filePath(fileName: fileName)!), let length = fileInfo[.size] as? Int64 {
+                progress.totalUnitCount = length
             }
-        } else {
-            super.start()
-            guard let request = request else { return  }
-            task = session?.downloadTask(with: request)
+            completed()
+            manager?.completed()
+            return
         }
-        speed = 0
-        progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
-        
-        task?.resume()
-
-        if startDate == 0 {
-            startDate = Date().timeIntervalSince1970
-        }
-        status = .running
-        TiercelLog("[downloadTask] runing, manager.identifier: \(manager?.identifier ?? ""), URLString: \(URLString)")
-        DispatchQueue.main.tr.safeAsync {
-            self.progressHandler?(self)
-        }
+        prepareToStart()
     }
+    
 
-
-    internal override func suspend(_ handler: TRTaskHandler? = nil) {
+    internal override func suspend(_ handler: TRHandler<TRTask>? = nil) {
         guard status == .running || status == .waiting else { return }
         controlHandler = handler
 
@@ -152,16 +136,15 @@ public class TRDownloadTask: TRTask {
         }
     }
     
-    internal override func cancel(_ handler: TRTaskHandler? = nil) {
+    internal override func cancel(_ handler: TRHandler<TRTask>? = nil) {
         guard status != .succeeded else { return }
         controlHandler = handler
-        
         if status == .running {
             status = .willCancel
             task?.cancel()
         } else {
             status = .willCancel
-            manager?.taskDidCancelOrRemove(URLString)
+            didCancelOrRemove()
             TiercelLog("[downloadTask] did cancel, manager.identifier: \(manager?.identifier ?? ""), URLString: \(URLString)")
             DispatchQueue.main.tr.safeAsync {
                 self.controlHandler?(self)
@@ -169,19 +152,18 @@ public class TRDownloadTask: TRTask {
             }
             manager?.completed()
         }
-        
     }
 
 
-    internal override func remove(_ handler: TRTaskHandler? = nil) {
+    internal override func remove(completely: Bool = false, _ handler: TRHandler<TRTask>? = nil) {
+        self.isRemoveCompletely = completely
         controlHandler = handler
-
         if status == .running {
             status = .willRemove
             task?.cancel()
         } else {
             status = .willRemove
-            manager?.taskDidCancelOrRemove(URLString)
+            didCancelOrRemove()
             TiercelLog("[downloadTask] did remove, manager.identifier: \(manager?.identifier ?? ""), URLString: \(URLString)")
             DispatchQueue.main.tr.safeAsync {
                 self.controlHandler?(self)
@@ -229,12 +211,86 @@ public class TRDownloadTask: TRTask {
     }
 }
 
+// MARK: - status handle
+extension TRDownloadTask {
+    private func prepareToStart() {
+        guard let manager = manager else { return }
+        switch status {
+        case .waiting, .suspended, .failed:
+            if manager.shouldRun {
+                startToDownload()
+            } else {
+                status = .waiting
+                TiercelLog("[downloadTask] waiting, manager.identifier: \(manager.identifier), URLString: \(URLString)")
+                DispatchQueue.main.tr.safeAsync {
+                    self.progressHandler?(self)
+                }
+            }
+        case .succeeded:
+            completed()
+            manager.completed()
+        case .running:
+            TiercelLog("[downloadTask] running, manager.identifier: \(manager.identifier), URLString: \(URLString)")
+        default: break
+        }
+        cache.storeTasks(manager.tasks)
+    }
+    
+    private func startToDownload() {
+        task?.removeObserver(self, forKeyPath: "currentRequest")
+        if let resumeData = resumeData {
+            cache.retrieveTmpFile(self)
+            if #available(iOS 10.2, *) {
+                task = session?.downloadTask(withResumeData: resumeData)
+            } else if #available(iOS 10.0, *) {
+                task = session?.correctedDownloadTask(withResumeData: resumeData)
+            } else {
+                task = session?.downloadTask(withResumeData: resumeData)
+            }
+        } else {
+            super.start()
+            guard let request = request else { return  }
+            task = session?.downloadTask(with: request)
+        }
+        speed = 0
+        progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
+        
+        task?.resume()
+        
+        if startDate == 0 {
+            startDate = Date().timeIntervalSince1970
+        }
+        status = .running
+        TiercelLog("[downloadTask] runing, manager.identifier: \(manager?.identifier ?? ""), URLString: \(URLString)")
+        DispatchQueue.main.tr.safeAsync {
+            self.progressHandler?(self)
+        }
+        
+        manager?.didStart()
+    }
+    
+    private func didCancelOrRemove() {
+        
+        // 把预操作的状态改成完成操作的状态
+        if status == .willCancel {
+            status = .canceled
+        }
+        
+        if status == .willRemove {
+            status = .removed
+        }
+        cache.remove(self, completely: isRemoveCompletely)
+        
+        manager?.didCancelOrRemove(URLString)
+    }
+}
+
 // MARK: - closure
 extension TRDownloadTask {
     @discardableResult
     public func validateFile(verificationCode: String,
                              verificationType: TRVerificationType,
-                             validateHandler: @escaping TRTaskHandler) -> TRDownloadTask {
+                             validateHandler: @escaping TRHandler<TRDownloadTask>) -> Self {
         self.verificationCode = verificationCode
         self.verificationType = verificationType
         self.validateHandler = validateHandler
@@ -317,12 +373,8 @@ extension TRDownloadTask {
             }
         }
 
-        session = nil
         progress.totalUnitCount = task.countOfBytesExpectedToReceive
         progress.completedUnitCount = task.countOfBytesReceived
-        if let pathExtension = task.response?.url?.pathExtension, !pathExtension.isEmpty {
-            self.pathExtension = pathExtension
-        }
 
         if let error = error {
             self.error = error
@@ -353,7 +405,7 @@ extension TRDownloadTask {
                     self.failureHandler?(self)
                 }
             case .willCancel, .willRemove:
-                manager?.taskDidCancelOrRemove(URLString)
+                didCancelOrRemove()
                 if status == .canceled {
                     TiercelLog("[downloadTask] did cancel, manager.identifier: \(manager?.identifier ?? ""), URLString: \(URLString)")
                 }
@@ -384,9 +436,9 @@ extension TRDownloadTask {
 extension Array where Element == TRDownloadTask {
     public func validateFile(verificationCodes: [String],
                              verificationType: TRVerificationType,
-                             validateHandler: @escaping TRTaskHandler) -> [TRDownloadTask] {
+                             validateHandler: @escaping TRHandler<TRDownloadTask>) -> [TRDownloadTask] {
         for (index, task) in self.enumerated() {
-            task.verificationCode = verificationCodes.safeObjectAtIndex(index)
+            task.verificationCode = verificationCodes.safeObject(at: index)
             task.verificationType = verificationType
             task.validateHandler = validateHandler
             if let manager = task.manager {

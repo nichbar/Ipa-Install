@@ -33,19 +33,36 @@ public class HttpParser {
     }
     
     private func extractQueryParams(_ url: String) -> [(String, String)] {
-        guard let questionMark = url.index(of: "?") else {
+        #if compiler(>=5.0)
+        guard let questionMarkIndex = url.firstIndex(of: "?") else {
             return []
         }
-        let queryStart = url.index(after: questionMark)
+        #else
+        guard let questionMarkIndex = url.index(of: "?") else {
+            return []
+        }
+        #endif
+        let queryStart = url.index(after: questionMarkIndex)
 
         guard url.endIndex > queryStart else { return [] }
+
+        #if swift(>=4.0)
         let query = String(url[queryStart..<url.endIndex])
+        #else
+        guard let query = String(url[queryStart..<url.endIndex]) else { return [] }
+        #endif
 
         return query.components(separatedBy: "&")
             .reduce([(String, String)]()) { (c, s) -> [(String, String)] in
+                #if compiler(>=5.0)
+                guard let nameEndIndex = s.firstIndex(of: "=") else {
+                    return c
+                }
+                #else
                 guard let nameEndIndex = s.index(of: "=") else {
                     return c
                 }
+                #endif
                 guard let name = String(s[s.startIndex..<nameEndIndex]).removingPercentEncoding else {
                     return c
                 }
@@ -59,11 +76,9 @@ public class HttpParser {
                 return c + [(name, value)]
         }
     }
-    
+
     private func readBody(_ socket: Socket, size: Int) throws -> [UInt8] {
-        var body = [UInt8]()
-        for _ in 0..<size { body.append(try socket.read()) }
-        return body
+        return try socket.read(length: size)
     }
     
     private func readHeaders(_ socket: Socket) throws -> [String: String] {

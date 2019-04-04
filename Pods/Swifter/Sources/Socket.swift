@@ -7,7 +7,6 @@
 
 import Foundation
 
-
 public enum SocketError: Error {
     case socketCreationFailed(String)
     case socketSettingReUseAddrFailed(String)
@@ -36,7 +35,9 @@ open class Socket: Hashable, Equatable {
         close()
     }
     
-    public var hashValue: Int { return Int(self.socketFileDescriptor) }
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(self.socketFileDescriptor)
+    }
     
     public func close() {
         if shutdown {
@@ -92,9 +93,18 @@ open class Socket: Hashable, Equatable {
     }
     
     public func writeData(_ data: Data) throws {
+        #if compiler(>=5.0)
+        try data.withUnsafeBytes { (body: UnsafeRawBufferPointer) -> Void in
+            if let baseAddress = body.baseAddress, body.count > 0 {
+                let pointer = baseAddress.assumingMemoryBound(to: UInt8.self)
+                try self.writeBuffer(pointer, length: data.count)
+            }
+        }
+        #else
         try data.withUnsafeBytes { (pointer: UnsafePointer<UInt8>) -> Void in
             try self.writeBuffer(pointer, length: data.count)
         }
+        #endif
     }
 
     private func writeBuffer(_ pointer: UnsafeRawPointer, length: Int) throws {
@@ -112,21 +122,76 @@ open class Socket: Hashable, Equatable {
         }
     }
     
+    /// Read a single byte off the socket. This method is optimized for reading
+    /// a single byte. For reading multiple bytes, use read(length:), which will
+    /// pre-allocate heap space and read directly into it.
+    ///
+    /// - Returns: A single byte
+    /// - Throws: SocketError.recvFailed if unable to read from the socket
     open func read() throws -> UInt8 {
-        var buffer = [UInt8](repeating: 0, count: 1)
+        var byte: UInt8 = 0
+
         #if os(Linux)
-            let next = recv(self.socketFileDescriptor as Int32, &buffer, Int(buffer.count), Int32(MSG_NOSIGNAL))
-        #else
-            let next = recv(self.socketFileDescriptor as Int32, &buffer, Int(buffer.count), 0)
-        #endif
-        if next <= 0 {
+	    let count = Glibc.read(self.socketFileDescriptor as Int32, &byte, 1)
+	    #else
+	    let count = Darwin.read(self.socketFileDescriptor as Int32, &byte, 1)
+	    #endif
+        
+        guard count > 0 else {
             throw SocketError.recvFailed(Errno.description())
         }
-        return buffer[0]
+        return byte
+    }
+
+    /// Read up to `length` bytes from this socket
+    ///
+    /// - Parameter length: The maximum bytes to read
+    /// - Returns: A buffer containing the bytes read
+    /// - Throws: SocketError.recvFailed if unable to read bytes from the socket
+    open func read(length: Int) throws -> [UInt8] {
+        var buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: length)
+
+        let bytesRead = try read(into: &buffer, length: length)
+
+        let rv = [UInt8](buffer[0..<bytesRead])
+        buffer.deallocate()
+        return rv
+    }
+
+    static let kBufferLength = 1024
+
+    /// Read up to `length` bytes from this socket into an existing buffer
+    ///
+    /// - Parameter into: The buffer to read into (must be at least length bytes in size)
+    /// - Parameter length: The maximum bytes to read
+    /// - Returns: The number of bytes read
+    /// - Throws: SocketError.recvFailed if unable to read bytes from the socket
+    func read(into buffer: inout UnsafeMutableBufferPointer<UInt8>, length: Int) throws -> Int {
+        var offset = 0
+        guard let baseAddress = buffer.baseAddress else { return 0 }
+
+        while offset < length {
+            // Compute next read length in bytes. The bytes read is never more than kBufferLength at once.
+            let readLength = offset + Socket.kBufferLength < length ? Socket.kBufferLength : length - offset
+
+            #if os(Linux)
+            let bytesRead = Glibc.read(self.socketFileDescriptor as Int32, baseAddress + offset, readLength)
+	        #else
+	        let bytesRead = Darwin.read(self.socketFileDescriptor as Int32, baseAddress + offset, readLength)
+	        #endif
+            
+            guard bytesRead > 0 else {
+                throw SocketError.recvFailed(Errno.description())
+            }
+
+            offset += bytesRead
+        }
+
+        return offset
     }
     
-    private static let CR = UInt8(13)
-    private static let NL = UInt8(10)
+    private static let CR: UInt8 = 13
+    private static let NL: UInt8 = 10
     
     public func readLine() throws -> String {
         var characters: String = ""

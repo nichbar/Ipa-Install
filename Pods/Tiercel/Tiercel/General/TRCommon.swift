@@ -49,11 +49,10 @@ public enum TRLogLevel {
     case none
 }
 
+public typealias TRHandler<T> = (T) -> ()
 
-public typealias TRTaskHandler = (TRTask) -> ()
-public typealias TRManagerHandler = (TRManager) -> ()
 
-public class Tiercel<Base> {
+public struct TiercelWrapper<Base> {
     internal let base: Base
     internal init(_ base: Base) {
         self.base = base
@@ -62,14 +61,12 @@ public class Tiercel<Base> {
 
 
 public protocol TiercelCompatible {
-    associatedtype CompatibleType
-    var tr: CompatibleType { get }
+
 }
 
-
 extension TiercelCompatible {
-    public var tr: Tiercel<Self> {
-        get { return Tiercel(self) }
+    public var tr: TiercelWrapper<Self> {
+        get { return TiercelWrapper(self) }
     }
 }
 

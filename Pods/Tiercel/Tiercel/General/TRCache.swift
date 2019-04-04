@@ -97,7 +97,7 @@ extension TRCache {
     }
     
     
-    public func filePtah(fileName: String) -> String? {
+    public func filePath(fileName: String) -> String? {
         if fileName.isEmpty {
             return nil
         }
@@ -106,28 +106,28 @@ extension TRCache {
     }
     
     public func fileURL(fileName: String) -> URL? {
-        guard let path = filePtah(fileName: fileName) else { return nil }
+        guard let path = filePath(fileName: fileName) else { return nil }
         return URL(fileURLWithPath: path)
     }
     
     public func fileExists(fileName: String) -> Bool {
-        guard let path = filePtah(fileName: fileName) else { return false }
+        guard let path = filePath(fileName: fileName) else { return false }
         return fileManager.fileExists(atPath: path)
     }
     
-    public func filePtah(URLString: String) -> String? {
+    public func filePath(URLString: String) -> String? {
         guard let url = URL(string: URLString) else { return nil }
         let fileName = url.tr.fileName
-        return filePtah(fileName: fileName)
+        return filePath(fileName: fileName)
     }
     
     public func fileURL(URLString: String) -> URL? {
-        guard let path = filePtah(URLString: URLString) else { return nil }
+        guard let path = filePath(URLString: URLString) else { return nil }
         return URL(fileURLWithPath: path)
     }
     
     public func fileExists(URLString: String) -> Bool {
-        guard let path = filePtah(URLString: URLString) else { return false }
+        guard let path = filePath(URLString: URLString) else { return false }
         return fileManager.fileExists(atPath: path)
     }
     
@@ -162,12 +162,20 @@ extension TRCache {
         return tasks
     }
 
-    internal func retrievTmpFile(_ task: TRDownloadTask) {
+    internal func retrieveTmpFile(_ task: TRDownloadTask) {
         ioQueue.sync {
             guard let tmpFileName = task.tmpFileName, !tmpFileName.isEmpty else { return }
             let path1 = (self.downloadTmpPath as NSString).appendingPathComponent(tmpFileName)
             let path2 = (NSTemporaryDirectory() as NSString).appendingPathComponent(tmpFileName)
-            if self.fileManager.fileExists(atPath: path1) && !self.fileManager.fileExists(atPath: path2) {
+            guard self.fileManager.fileExists(atPath: path1) else { return }
+
+            if self.fileManager.fileExists(atPath: path2) {
+                do {
+                    try self.fileManager.removeItem(atPath: path1)
+                } catch {
+                    TiercelLog("removeItem error: \(error)")
+                }
+            } else {
                 do {
                     try self.fileManager.moveItem(atPath: path1, toPath: path2)
                 } catch {
@@ -261,28 +269,23 @@ extension TRCache {
         ioQueue.async {
             guard let tmpFileName = task.tmpFileName, !tmpFileName.isEmpty else { return }
             let path1 = (self.downloadTmpPath as NSString).appendingPathComponent(tmpFileName)
-            if self.fileManager.fileExists(atPath: path1) {
-                do {
-                    try self.fileManager.removeItem(atPath: path1)
-                } catch {
-                    TiercelLog("removeItem error: \(error)")
-                }
-            }
-
             let path2 = (NSTemporaryDirectory() as NSString).appendingPathComponent(tmpFileName)
-            if self.fileManager.fileExists(atPath: path2) {
-                do {
-                    try self.fileManager.removeItem(atPath: path2)
-                } catch {
-                    TiercelLog("removeItem error: \(error)")
+            [path1, path2].forEach({ (path) in
+                if self.fileManager.fileExists(atPath: path) {
+                    do {
+                        try self.fileManager.removeItem(atPath: path)
+                    } catch {
+                        TiercelLog("removeItem error: \(error)")
+                    }
                 }
-            }
+            })
+
         }
     }
 }
 
 extension URL: TiercelCompatible { }
-extension Tiercel where Base == URL {
+extension TiercelWrapper where Base == URL {
     public var fileName: String {
         var fileName = base.absoluteString.tr.md5
         if !base.pathExtension.isEmpty {

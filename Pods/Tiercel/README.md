@@ -29,7 +29,7 @@ Tiercel是一个简单易用且功能丰富的纯Swift下载框架，支持原�
 
 ## Tiercel 2:
 
-Tiercel 2 是全新的版本，下载实现基于`URLSessionDownloadTask`，支持原生的后台下载，功能更加强大，使用方式也有了一些改变，不兼容旧版本，请注意新版的使用方法。
+Tiercel 2 是全新的版本，下载实现基于`URLSessionDownloadTask`，支持原生的后台下载，功能更加强大，使用方式也有了一些改变，不兼容旧版本，请注意新版的使用方法。如果想了解后台下载的细节和注意事项，可以看这篇文章：[iOS原生级别后台下载详解](https://juejin.im/post/5c4ed0b0e51d4511dc730799)
 
 旧版本下载实现基于`URLSessionDataTask`，不支持后台下载，已经移至`dataTask`分支，原则上不再更新，如果不需要后台下载功能，或者不想迁移到新版，可以直接下载`dataTask`分支的源码使用，也可以在`Podfile`里使用以下方式安装：
 
@@ -45,11 +45,11 @@ end
 
 ## Features:
 
-- [x] 原生级别的后台下载
-- [x] 支持离线断点续传，无论crash还是手动Kill App都不会影响
-- [x] 精细的任务管理，每个下载任务都可以单独管理操作和状态回调
-- [x] 支持多个下载模块，每个模块拥有一个管理者，每个模块互不影响
-- [x] 下载模块的管理者拥有总任务的状态回调
+- [x] 支持原生级别的后台下载
+- [x] 支持离线断点续传，App无论crash还是被手动Kill都可以恢复下载
+- [x] 拥有精细的任务管理，每个下载任务都可以单独操作和管理
+- [x] 支持创建多个下载模块，每个模块互不影响
+- [x] 每个下载模块拥有单独的管理者，可以对总任务进行操作和管理
 - [x] 内置了下载速度、剩余时间等常见的下载信息
 - [x] 链式语法调用
 - [x] 支持控制下载任务的最大并发数
@@ -128,7 +128,7 @@ func application(_ application: UIApplication, didFinishLaunchingWithOptions lau
 // 必须实现此方法，并且把identifier对应的completionHandler保存起来
 func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
 
-    if TRManager.default.identifier == identifier {
+    if identifier == TRManager.default.identifier {
         TRManager.default.completionHandler = completionHandler
     }
 
@@ -155,7 +155,7 @@ let tasks = TRManager.default.multiDownload(URLStrings)
 // 回调闭包的参数是TRDownloadTask实例，可以得到所有相关的信息
 // 回调闭包都是在主线程运行
 // progress 闭包：如果任务正在下载，就会触发
-// success 闭包：任务已经下载过，或者下载完成，都会出发，这时候task.status == .succeeded
+// success 闭包：任务已经下载过，或者下载完成，都会触发，这时候task.status == .succeeded
 // failure 闭包：只要task.status != .succeeded，就会触发：
 //    1. 暂停任务，这时候task.status == .suspended
 //    2. 任务下载失败，这时候task.status == .failed
@@ -213,30 +213,30 @@ Tiercel 2 的下载实现基于`URLSessionDownloadTask`，支持原生的后台�
 // 必须实现此方法，并且把identifier对应的completionHandler保存起来
 func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
 
-    if TRManager.default.identifier == identifier {
+    if identifier == TRManager.default.identifier {
         TRManager.default.completionHandler = completionHandler
     }
 }
 ```
 
-只要使用Tiercel 开启了下载任务：
+只要使用 Tiercel 开启了下载任务：
 
-- 手动Kill App，任务会暂时，重启App后可以恢复进度，继续下载
-- 只要不是手动Kill App，任务会一直在下载
-  - 把App退回后台，任务会一直在下载
-  - 无论在前台还是后台，如果App崩溃或者被系统关闭，任务还是会一直在下载
-  - 重启手机，任务会一直在下载
+- 手动Kill App，任务会暂停，重启App后可以恢复进度，继续下载
+- 只要不是手动Kill App，任务都会一直在下载，例如：
+  - App退回后台
+  - App崩溃或者被系统关闭
+  - 重启手机
 
-
+如果想了解后台下载的细节和注意事项，可以看这篇文章：[iOS原生级别后台下载详解](https://juejin.im/post/5c4ed0b0e51d4511dc730799)
 
 ### 文件校验
 
 Tiercel提供了文件校验功能，可以根据需要添加，校验结果在回调的`task.validation`里
 
 ```swift
-// 回调闭包在主线程运行
-let task = TRManager.default.download("http://dldir1.qq.com/qqfile/QQforMac/QQ_V4.2.4.dmg")
 
+let task = TRManager.default.download("http://dldir1.qq.com/qqfile/QQforMac/QQ_V4.2.4.dmg")
+// 回调闭包在主线程运行
 task?.validateFile(verificationCode: "9e2a3650530b563da297c9246acaad5c",
                    verificationType: .md5,
                    validateHandler: { (task) in
@@ -257,7 +257,7 @@ TRChecksumHelper是文件校验的工具类，可以直接使用它对已经存�
 ///   - filePath: 文件路径
 ///   - verificationCode: 文件的Hash值
 ///   - verificationType: Hash类型
-///   - completion: 完成回调
+///   - completion: 完成回调, 在子线程运行
 public class func validateFile(_ filePath: String, 
                                verificationCode: String, 
                                verificationType: TRVerificationType, 

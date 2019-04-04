@@ -34,7 +34,7 @@ internal class TRSessionDelegate: NSObject {
 
 extension TRSessionDelegate: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
-        manager?.didBecomeInvalidWithError(error)
+        manager?.didBecomeInvalidation(withError: error)
     }
     
     
@@ -56,7 +56,7 @@ extension TRSessionDelegate: URLSessionDownloadDelegate {
         guard let manager = manager,
             let currentURLString = downloadTask.currentRequest?.url?.absoluteString,
             let task = manager.fetchTask(currentURLString: currentURLString) as? TRDownloadTask
-            else { return  }
+            else { return }
         task.didFinishDownloadingTo(location: location)
     }
     
@@ -64,7 +64,7 @@ extension TRSessionDelegate: URLSessionDownloadDelegate {
         guard let manager = manager,
             let currentURLString = task.currentRequest?.url?.absoluteString,
             let downloadTask = manager.fetchTask(currentURLString: currentURLString) as? TRDownloadTask
-            else { return  }
+            else { return }
         downloadTask.didComplete(task: task, error: error)
     }
     
